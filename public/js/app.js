@@ -226,7 +226,11 @@
       const data = await res.json();
 
       if (!res.ok) {
-        showToast(data.error || 'Failed to save.', 'error');
+        const supabaseMsg =
+          data?.supabaseError?.message ||
+          data?.supabaseError?.details ||
+          data?.supabaseError?.hint;
+        showToast(supabaseMsg || data?.error || 'Failed to save.', 'error');
         return;
       }
 

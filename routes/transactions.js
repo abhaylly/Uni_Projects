@@ -55,40 +55,61 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { type, amount, category, date, description } = req.body;
-  const userId = req.user.id;
+  try {
+    const { type, amount, category, date, description } = req.body;
+    const rawUserId = req.user.id;
+    const userId =
+      typeof rawUserId === 'string' && /^\d+$/.test(rawUserId)
+        ? Number(rawUserId)
+        : rawUserId;
 
-  if (!type || !amount || !category || !date) {
-    return res.status(400).json({ error: 'Type, amount, category, and date are required.' });
+    if (!type || !amount || !category || !date) {
+      return res.status(400).json({ error: 'Type, amount, category, and date are required.' });
+    }
+
+    if (!['income', 'expense'].includes(type)) {
+      return res.status(400).json({ error: 'Type must be income or expense.' });
+    }
+
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ error: 'Amount must be a positive number.' });
+    }
+
+    const { data: transaction, error } = await supabase
+      .from('transactions')
+      .insert({
+        user_id: userId,
+        type,
+        amount: parsedAmount,
+        category: category.trim(),
+        date,
+        description: description ? description.trim() : ''
+      })
+      .select()
+      .single();
+
+    if (error) {
+      const supabaseError = {
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        code: error?.code
+      };
+      return res.status(500).json({
+        error: supabaseError.message || 'Failed to add transaction.',
+        supabaseError
+      });
+    }
+
+    res.status(201).json({ transaction });
+  } catch (err) {
+    console.error('Add transaction crash:', err);
+    return res.status(503).json({
+      error: 'Database connection failed. Please try again shortly.',
+      details: err?.message || 'Unknown fetch error'
+    });
   }
-
-  if (!['income', 'expense'].includes(type)) {
-    return res.status(400).json({ error: 'Type must be income or expense.' });
-  }
-
-  const parsedAmount = parseFloat(amount);
-  if (isNaN(parsedAmount) || parsedAmount <= 0) {
-    return res.status(400).json({ error: 'Amount must be a positive number.' });
-  }
-
-  const { data: transaction, error } = await supabase
-    .from('transactions')
-    .insert({
-      user_id: userId,
-      type,
-      amount: parsedAmount,
-      category: category.trim(),
-      date,
-      description: description ? description.trim() : ''
-    })
-    .select()
-    .single();
-
-  if (error) {
-    return res.status(500).json({ error: 'Failed to add transaction.' });
-  }
-
-  res.status(201).json({ transaction });
 });
 
 router.put('/:id', async (req, res) => {
